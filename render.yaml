@@ -1,7 +1,9 @@
 services:
-  - type: web
-    name: delta-bot
+  - type: worker
+    name: delta-bot-worker
     env: python
     plan: free
     buildCommand: "pip install -r requirements.txt"
     startCommand: "python3 app.py"
+    region: oregon
+    autoDeploy: true
