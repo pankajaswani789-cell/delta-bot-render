@@ -1,70 +1,82 @@
-from flask import Flask, request, jsonify
-import threading
-import queue
-import time
 import os
+import time
+import hmac
+import hashlib
+import requests
 
-app = Flask(__name__)
+DELTA_API_KEY = os.getenv("DELTA_API_KEY")
+DELTA_API_SECRET = os.getenv("DELTA_API_SECRET")
 
-# Environment variables
-SIGNAL_TOKEN = os.environ.get("SIGNAL_TOKEN", "PInu12@@")
-DELTA_API_KEY = os.environ.get("DELTA_API_KEY", "bvmFpGf4f6o9jYplg7icacIbhEt637")
-DELTA_API_SECRET = os.environ.get("DELTA_API_SECRET", "g5bn7Wa0x5zQu6kaaEpQbHXDh2nHYnKGAd2GgCEeQYdo1NcHwbQggLPBaZwT")
+ENDPOINTS = [
+    "https://cdn-ind.testnet.deltaex.org",
+    "https://testnet-api.delta.exchange",
+    "https://api-testnet.delta.exchange"
+]
 
-# Queue for signals
-signal_queue = queue.Queue()
-
-@app.route('/')
-def home():
-    return "✅ Delta Bot Render API Active"
-
-@app.route('/signal', methods=['POST'])
-def receive_signal():
-    data = request.get_json()
-    token = data.get("token") if data else None
-
-    # Debug print (visible in Render logs)
-    print(f"DEBUG: Received token={token} | Expected SIGNAL_TOKEN={SIGNAL_TOKEN}")
-
-    if token != SIGNAL_TOKEN:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    if not data or "signal" not in data:
-        return jsonify({"error": "Invalid payload"}), 400
-
-    signal_queue.put(data)
-    print(f"📥 Enqueued signal: {data}")
-    return jsonify({"status": "Signal received", "data": data}), 200
-
-
-def process_signal(signal_data):
-    """Trading logic placeholder"""
-    signal = signal_data.get("signal")
-    print(f"📡 Processing signal: {signal}")
-
-    if signal == "BUY":
-        print("🚀 Simulating BUY order on Delta Exchange...")
-    elif signal == "SELL":
-        print("🔻 Simulating SELL order on Delta Exchange...")
-    else:
-        print("⚠️ Unknown signal received.")
-
-
-def background_worker():
-    """Background thread for processing signals"""
-    while True:
+def get_server_time(base):
+    paths = ["/v2/time", "/v2/timestamp", "/v2/server_time"]
+    for path in paths:
         try:
-            if not signal_queue.empty():
-                data = signal_queue.get()
-                process_signal(data)
-            else:
-                print("🕒 Waiting for Termux signals...")
-            time.sleep(5)
-        except Exception as e:
-            print(f"⚠️ Worker error: {e}")
-            time.sleep(10)
+            url = base.rstrip("/") + path
+            r = requests.get(url, timeout=5)
+            if r.status_code == 200:
+                j = r.json()
+                if isinstance(j, dict):
+                    for key in ["server_time", "time", "timestamp"]:
+                        if key in j:
+                            return int(j[key])
+        except:
+            continue
+    return None
 
+def build_signature(secret, timestamp, method, path, body=""):
+    payload = str(timestamp) + method.upper() + path + (body or "")
+    return hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
 
-if __name__ == '__main__':
-    threading.Thread(target=background_worker, daemon=True).start()
-    app.run(host='0.0.0.0', port=10000)
+def check_auth():
+    if not DELTA_API_KEY or not DELTA_API_SECRET:
+        print("❌ Missing DELTA_API_KEY or DELTA_API_SECRET")
+        return
+
+    path = "/v2/orders"
+    method = "GET"
+
+    for base in ENDPOINTS:
+        print(f"\n🔎 Checking endpoint: {base}")
+
+        server_time = get_server_time(base)
+        if not server_time:
+            print("⚠️ No server time endpoint found, using local time fallback.")
+            server_time = int(time.time() * 1000)
+
+        local_time = int(time.time() * 1000)
+        drift = local_time - server_time
+        print(f"🕒 Server time: {server_time} | Local time: {local_time} | Drift: {drift} ms")
+
+        # Try with ±5000ms drift adjustment
+        for offset in [0, -2000, 2000, -4000, 4000, -5000, 5000]:
+            adj_time = local_time + offset
+            sig = build_signature(DELTA_API_SECRET, adj_time, method, path)
+            headers = {
+                "api-key": DELTA_API_KEY,
+                "signature": sig,
+                "timestamp": str(adj_time)
+            }
+
+            try:
+                r = requests.get(base.rstrip("/") + path, headers=headers, timeout=10)
+                print(f"⏱️ Trying offset {offset:+} ms → Status {r.status_code}")
+                if r.status_code == 200:
+                    print("✅ SUCCESS! Auth verified:", base)
+                    return
+                elif r.status_code == 401 and "ip_not_whitelisted" in r.text:
+                    print("⚠️ IP not whitelisted, but signature is VALID ✅")
+                    return
+            except Exception as e:
+                print("❌ Error:", e)
+
+    print("\n❌ All attempts failed. Possible large time drift or bad endpoint.")
+
+if __name__ == "__main__":
+    print("🚀 Running Delta Testnet Authentication with Auto Time Fix...")
+    check_auth()
