@@ -1,9 +1,15 @@
 services:
-  - type: worker
-    name: delta-bot-worker
+  - type: web
+    name: delta-bot-render
     env: python
     plan: free
+    region: oregon
     buildCommand: "pip install -r requirements.txt"
     startCommand: "python3 app.py"
-    region: oregon
-    autoDeploy: true
+    envVars:
+      - key: SIGNAL_TOKEN
+        value: PInu12@@
+      - key: DELTA_API_KEY
+        value: bvmFpGf4f6o9jYplg7icacIbhEt637
+      - key: DELTA_API_SECRET
+        value: g5bn7Wa0x5zQu6kaaEpQbHXDh2nHYnKGAd2GgCEeQYdo1NcHwbQggLPBaZwT
