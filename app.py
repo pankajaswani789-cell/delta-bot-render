@@ -20,10 +20,12 @@ def home():
 
 @app.route('/signal', methods=['POST'])
 def receive_signal():
-    # Token-based authorization
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or auth_header.replace("Bearer ", "").strip() != SIGNAL_TOKEN:
+    # Token-based authorization (JSON-based)
+    data = request.get_json()
+    token = data.get("token") if data else None
+    if token != SIGNAL_TOKEN:
         return jsonify({"error": "Unauthorized"}), 401
+
 
     # Get JSON data
     data = request.get_json()
