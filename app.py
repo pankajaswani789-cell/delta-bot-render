@@ -6,25 +6,24 @@ import os
 
 app = Flask(__name__)
 
-# Load secrets from environment (Render dashboard se)
-SIGNAL_TOKEN = os.environ.get("SIGNAL_TOKEN", "")
-DELTA_API_KEY = os.environ.get("DELTA_API_KEY", "")
-DELTA_API_SECRET = os.environ.get("DELTA_API_SECRET", "")
+# Environment variables
+SIGNAL_TOKEN = os.environ.get("SIGNAL_TOKEN", "PInu12@@")
+DELTA_API_KEY = os.environ.get("DELTA_API_KEY", "bvmFpGf4f6o9jYplg7icacIbhEt637")
+DELTA_API_SECRET = os.environ.get("DELTA_API_SECRET", "g5bn7Wa0x5zQu6kaaEpQbHXDh2nHYnKGAd2GgCEeQYdo1NcHwbQggLPBaZwT")
 
+# Queue for signals
 signal_queue = queue.Queue()
-
 
 @app.route('/')
 def home():
     return "✅ Delta Bot Render API Active"
-
 
 @app.route('/signal', methods=['POST'])
 def receive_signal():
     data = request.get_json()
     token = data.get("token") if data else None
 
-    # Debug print — Render logs me check karna
+    # Debug print (visible in Render logs)
     print(f"DEBUG: Received token={token} | Expected SIGNAL_TOKEN={SIGNAL_TOKEN}")
 
     if token != SIGNAL_TOKEN:
@@ -48,10 +47,11 @@ def process_signal(signal_data):
     elif signal == "SELL":
         print("🔻 Simulating SELL order on Delta Exchange...")
     else:
-        print("⚠️ Unknown signal received!")
+        print("⚠️ Unknown signal received.")
 
 
 def background_worker():
+    """Background thread for processing signals"""
     while True:
         try:
             if not signal_queue.empty():
